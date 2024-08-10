@@ -67,7 +67,7 @@ contract CtfCyfrin13 is Base {
         
         vm.prank(BOB);
         vm.expectEmit();
-        emit ChallengeSolved(BOB, CHALLENGE_13, TWITTER_HANDLE);
+        emit ChallengeSolved(BOB, address(challenge), TWITTER_HANDLE);
         challenge.solveChallenge(TWITTER_HANDLE, answer);
     }
 }

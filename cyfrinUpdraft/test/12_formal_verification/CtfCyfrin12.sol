@@ -2,7 +2,8 @@
 
 pragma solidity ^0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
+import {console} from "forge-std/Test.sol";
+import {Base} from "../Base.sol";
 
 interface Challenge {
     function solveChallenge(string memory yourTwitterHandle, uint256 value) external;
@@ -18,29 +19,31 @@ interface S12Helper {
 /// @notice Link to course section: https://github.com/Cyfrin/assembly-evm-opcodes-and-formal-verification-course?tab=readme-ov-file#section-2-nft
 ///
 /// @dev This challenge can be solved in many ways, but readers are encouraged to try solving it using a formal verification tool. Here, Halmos is used.
-contract CtfCyfrin12 is Test {
-    string constant TWITTER_HANDLE = "focusoor";
+contract CtfCyfrin12 is Base {
     uint256 constant UNIT = 1e18;
-    uint256 public fork;
 
-    Challenge challenge = Challenge(0x3DbBF2F9AcFB9Aac8E0b31563dd75a2D69148D64);
-    S12Helper helper = S12Helper(0xf2dde8E99f583b5354441EB7a141042419082596);
+    Challenge challenge = Challenge(CHALLENGE_12);
+    S12Helper helper = S12Helper(HELPER_12);
 
     /// @dev Comment out this setUp() before running halmos test 
-    function setUp() public {
-        fork = vm.createFork(vm.envString("SEPOLIA_URL"));
+    function setUp() public override {
+        Base.setUp();
     }
 
-    /// @dev To keep it simple, if solution is right, no error starting with S12__ should be thrown 
     function testSolveChallengeCtfCyfrin12() external {
-        vm.selectFork(fork);
+        vm.selectFork(sepoliaFork);
+
         // pick one of the values after running halmos
         uint256 valueThatBreaksProperty = 2859245331424980500628;
+
+        vm.prank(BOB);
+        vm.expectEmit();
+        emit ChallengeSolved(BOB, address(challenge), TWITTER_HANDLE);
         challenge.solveChallenge(TWITTER_HANDLE, valueThatBreaksProperty);
     }
 
     function testGetRng() external {
-        vm.selectFork(fork);
+        vm.selectFork(sepoliaFork);
         uint256 rng = uint256(vm.load(address(helper), bytes32(0)));
         console.log("Rng atm:", rng);
     }
