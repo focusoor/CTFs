@@ -2,7 +2,8 @@
 
 pragma solidity ^0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
+import {console} from "forge-std/Test.sol";
+import {Base} from "../Base.sol";
 
 interface Challenge {
     function solveChallenge(string memory yourTwitterHandle, bytes calldata dataToUse) external;
@@ -13,19 +14,15 @@ interface Challenge {
 ///
 /// @notice This challenge is part of Cytfin Updraft 'Assembly-evm-codes-formal-verification' course
 /// @notice Link to course section: https://github.com/Cyfrin/assembly-evm-opcodes-and-formal-verification-course?tab=readme-ov-file#section-1-nft
-contract CtfCyfrin11 is Test {
-    string constant TWITTER_HANDLE = "focusoor";
-
+contract CtfCyfrin11 is Base {
     bytes4 constant ZERO_SELECTOR = 0xe18d4afd;
     bytes4 constant ONE_SELECTOR = 0x90949f11;
     bytes4 constant TWO_SELECTOR = 0x08949a76;
     bytes4 constant THREE_SELECTOR = 0x7aa9a7f9;
 
-    uint256 public fork;
+    Challenge challenge = Challenge(CHALLENGE_11);
 
-    Challenge challenge = Challenge(0x444aE92325dCE5D14d40c30d2657547513674dD6);
-
-    address public unverifiedContractAddr = 0x4221EC0A43138CF0135b2Bd91Dd3b176E1E22908;
+    address public unverifiedContractAddr = HELPER_11;
 
     /// @notice DECONSTRUCTED BYTECODE
     /// if slot_0 + msg.sender == calldata_slot_1:
@@ -167,25 +164,28 @@ contract CtfCyfrin11 is Test {
         REVERT 
     */
 
-    function setUp() public {
-        fork = vm.createFork(vm.envString("SEPOLIA_URL"));
+    function setUp() public override {
+        Base.setUp();
     }
 
-    /// @dev To keep it simple, if solution is right, no error starting with S11__ should be thrown
-    ///
     /// @notice Depending on the value at slot 0, we can craft calldata:
     /// @notice 1st word of calldata points to the right function selector
-    /// @notice 2nd second word of calldata is value that corresponds to slot_0 + msg.sender (0x444aE92325dCE5D14d40c30d2657547513674dD6)
+    /// @notice 2nd second word of calldata is value that corresponds to slot_0 + msg.sender (challenge address)
     function testSolveChallengeCtfCyfrin11() external {
-        vm.selectFork(fork);
+        vm.selectFork(sepoliaFork);
+
         // change this value depending on the slot_0 value, this can also be done programmatically
         // this assumes current slot_0 value is 3
         bytes memory callData = hex"7aa9a7f90000000000000000000000000000000000000000000000000000000000000000000000000000000000000000444ae92325dce5d14d40c30d2657547513674dd9";
+        
+        vm.prank(BOB);
+        vm.expectEmit();
+        emit ChallengeSolved(BOB, address(challenge), TWITTER_HANDLE);
         challenge.solveChallenge(TWITTER_HANDLE, callData);
     }
 
     function testGetValueFromSlot0() external {
-        vm.selectFork(fork);
+        vm.selectFork(sepoliaFork);
         bytes32 slot0 = vm.load(unverifiedContractAddr, bytes32(0));
         console.log(uint256(slot0));
     }
