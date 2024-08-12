@@ -8,6 +8,8 @@ contract Base is Test {
     string constant TWITTER_HANDLE = "focusoor";
     address constant BOB = address(0xbb);
 
+    address constant CHALLENGE_1 = address(0x76D2403b80591d5F6AF2b468BC14205fa5452AC0);
+
     address constant HELPER_11 = address(0x4221EC0A43138CF0135b2Bd91Dd3b176E1E22908);
     address constant CHALLENGE_11 = address(0x444aE92325dCE5D14d40c30d2657547513674dD6);
 
