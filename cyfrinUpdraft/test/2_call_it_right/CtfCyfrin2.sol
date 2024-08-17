@@ -12,7 +12,7 @@ interface Challenge {
 /// @title Solution for challenge 2 for Cyfrin CTF
 /// @author focusoor
 ///
-/// @notice This challenge is part of Cytfin Updraft 'Assembly-evm-codes-formal-verification' course
+/// @notice This challenge is part of Cytfin Updraft 'Smart Contract Security' course
 /// @notice Link to course section: https://github.com/Cyfrin/security-and-auditing-full-course-s23?tab=readme-ov-file#section-2-nft
 /// @notice hardest one so far
 contract CtfCyfrin2 is Base {

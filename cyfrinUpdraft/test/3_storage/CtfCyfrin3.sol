@@ -12,7 +12,7 @@ interface Challenge {
 /// @title Solution for challenge 3 for Cyfrin CTF
 /// @author focusoor
 ///
-/// @notice This challenge is part of Cytfin Updraft 'Assembly-evm-codes-formal-verification' course
+/// @notice This challenge is part of Cytfin Updraft 'Smart Contract Security' course
 /// @notice Link to course section: https://github.com/Cyfrin/security-and-auditing-full-course-s23?tab=readme-ov-file#section-3-nft
 contract CtfCyfrin3 is Base {
     Challenge challenge = Challenge(CHALLENGE_3);
