@@ -8,9 +8,6 @@ import {Base} from "../Base.sol";
 interface Challenge {
     function solveChallenge(uint256 guess, string memory yourTwitterHandle) external;
 }
-interface IERC721Receiver {
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4);
-}
 
 /*//////////////////////////////////////////////////////////////
                             CHALLENGE
@@ -84,10 +81,5 @@ contract CtfCyfrin4 is Base {
             guess := tload(0)
         }
         challenge.solveChallenge(guess, TWITTER_HANDLE);
-    }
-
-    /// @notice because address(this) is msg.sender, we have to add receive method for contract
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
-        return IERC721Receiver.onERC721Received.selector;
     }
 }

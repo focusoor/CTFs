@@ -23,9 +23,6 @@ interface S6Token {
     function approve(address spender, uint256 value) external returns (bool);
     function transfer(address to, uint256 value) external returns (bool);
 }
-interface IERC721Receiver {
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4);
-}
 interface IFlashLoanReceiver {
     function execute() external payable;
 }
@@ -81,10 +78,5 @@ contract CtfCyfrin6 is Base, WhoAreYou, IFlashLoanReceiver {
 
         // 5. retun flashloan (thisS6TokenBalance should stay the same)
         S6Token(s6Token).transfer(s6Market, thisS6TokenBalance);
-    }
-
-    /// @notice because address(this) is msg.sender, we have to add receive method for contract
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
-        return IERC721Receiver.onERC721Received.selector;
     }
 }

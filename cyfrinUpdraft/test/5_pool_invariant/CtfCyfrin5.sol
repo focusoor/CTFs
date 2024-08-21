@@ -13,9 +13,6 @@ interface Challenge {
     function getTokenB() external view returns (address);
     function getTokenC() external view returns (address);
 }
-interface IERC721Receiver {
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4);
-}
 interface S5Token {
     function mint(address to) external;
     function balanceOf(address account) external view returns (uint256);
@@ -123,10 +120,5 @@ contract CtfCyfrin5 is Base {
         console.log("Token B balance: ", _balances.balanceTokenB);
         console.log("Token C balance: ", _balances.balanceTokenC);
         console.log("Shares: ", _balances.shares);
-    }
-
-    /// @notice because address(this) is msg.sender, we have to add receive method for contract
-    function onERC721Received(address, address, uint256, bytes calldata) external pure returns (bytes4) {
-        return IERC721Receiver.onERC721Received.selector;
     }
 }
