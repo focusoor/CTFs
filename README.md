@@ -1,2 +1,2 @@
 # CTFs
-Web3 CTFs on one place with solutions
+Web3 CTFs on one place with solutions. WIP...
