@@ -1,2 +1,2 @@
 # CTFs
-Web3 CTFs on one place with solutions. WIP...
+Some CTFs with solutions to practice web3 security
